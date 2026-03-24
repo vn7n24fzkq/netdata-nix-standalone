@@ -14,7 +14,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
@@ -27,11 +27,52 @@ jobs:
       - name: Setup Nix cache
         uses: DeterminateSystems/magic-nix-cache-action@main
 
+      - name: Build netdata (with auto hash update)
+        id: build
+        run: |
+          set +e
+          OUTPUT=$(nix build .#netdata 2>&1)
+          EXIT_CODE=$?
+          echo "$OUTPUT"
+
+          if echo "$OUTPUT" | grep -q "hash mismatch"; then
+            echo "hash_mismatch=true" >> $GITHUB_OUTPUT
+            NEW_HASH=$(echo "$OUTPUT" | grep "got:" | awk '{print $2}')
+            echo "new_hash=$NEW_HASH" >> $GITHUB_OUTPUT
+            echo "Detected new dashboard hash: $NEW_HASH"
+          else
+            echo "hash_mismatch=false" >> $GITHUB_OUTPUT
+          fi
+
+          exit $EXIT_CODE
+
+      - name: Update dashboard hash
+        if: failure() && steps.build.outputs.hash_mismatch == 'true'
+        run: |
+          NEW_HASH="${{ steps.build.outputs.new_hash }}"
+          echo "Updating flake.nix with new hash: $NEW_HASH"
+
+          # Update the hash in flake.nix
+          sed -i "s|hash = \"sha256-[^\"]*\"|hash = \"$NEW_HASH\"|" flake.nix
+
+          # Verify the change
+          grep "hash = " flake.nix
+
+      - name: Rebuild with new hash
+        if: failure() && steps.build.outputs.hash_mismatch == 'true'
+        run: nix build .#netdata
+
+      - name: Commit updated hash
+        if: failure() && steps.build.outputs.hash_mismatch == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add flake.nix
+          git commit -m "Update dashboard hash to ${{ steps.build.outputs.new_hash }}"
+          git push
+
       - name: Check flake
         run: nix flake check
-
-      - name: Build netdata package
-        run: nix build .#netdata
 
       - name: Build Docker image
         run: nix build .#docker
@@ -51,18 +92,14 @@ jobs:
 
       - name: Load and push Docker image
         run: |
-          # Load the image built by Nix
           docker load < result
 
-          # Use the known image name from flake.nix
           IMAGE_NAME="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
           VERSION="${{ steps.version.outputs.version }}"
 
-          # Tag with version
           docker tag "${IMAGE_NAME}:${VERSION}" "${IMAGE_NAME}:${VERSION}"
           docker push "${IMAGE_NAME}:${VERSION}"
 
-          # Tag and push as latest
           docker tag "${IMAGE_NAME}:${VERSION}" "${IMAGE_NAME}:latest"
           docker push "${IMAGE_NAME}:latest"
 
@@ -71,3 +108,6 @@ jobs:
           echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "- Netdata version: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "- Image: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.build.outputs.hash_mismatch }}" == "true" ]; then
+            echo "- Dashboard hash was auto-updated" >> $GITHUB_STEP_SUMMARY
+          fi
