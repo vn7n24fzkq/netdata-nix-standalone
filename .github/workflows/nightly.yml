@@ -36,6 +36,12 @@ jobs:
       - name: Build Docker image
         run: nix build .#docker
 
+      - name: Get netdata version
+        id: version
+        run: |
+          VERSION=$(nix eval --raw .#netdata.version)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Log in to Container Registry
         uses: docker/login-action@v3
         with:
@@ -48,18 +54,20 @@ jobs:
           # Load the image built by Nix
           docker load < result
 
-          # Get the image name and tag from Nix build
-          IMAGE_TAG=$(docker images --format "{{.Repository}}:{{.Tag}}" | head -1)
+          # Use the known image name from flake.nix
+          IMAGE_NAME="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          VERSION="${{ steps.version.outputs.version }}"
 
-          # Push with version tag
-          docker push "$IMAGE_TAG"
+          # Tag with version
+          docker tag "${IMAGE_NAME}:${VERSION}" "${IMAGE_NAME}:${VERSION}"
+          docker push "${IMAGE_NAME}:${VERSION}"
 
-          # Also tag and push as latest
-          docker tag "$IMAGE_TAG" "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-          docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          # Tag and push as latest
+          docker tag "${IMAGE_NAME}:${VERSION}" "${IMAGE_NAME}:latest"
+          docker push "${IMAGE_NAME}:latest"
 
       - name: Summary
         run: |
           echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- Netdata version: $(nix eval --raw .#netdata.version)" >> $GITHUB_STEP_SUMMARY
+          echo "- Netdata version: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "- Image: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
