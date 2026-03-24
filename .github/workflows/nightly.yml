@@ -90,21 +90,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Check if version tag exists
-        id: check_tag
-        run: |
-          IMAGE_NAME="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
-          VERSION="${{ steps.version.outputs.version }}"
-
-          # Check if the version tag already exists in registry
-          if docker manifest inspect "${IMAGE_NAME}:${VERSION}" > /dev/null 2>&1; then
-            echo "Version ${VERSION} already exists in registry"
-            echo "tag_exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "Version ${VERSION} is new"
-            echo "tag_exists=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Load and push Docker image
         run: |
           docker load < result
@@ -112,15 +97,10 @@ jobs:
           IMAGE_NAME="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
           VERSION="${{ steps.version.outputs.version }}"
 
-          # Only push version tag if it's a new version
-          if [ "${{ steps.check_tag.outputs.tag_exists }}" == "false" ]; then
-            echo "Pushing new version tag: ${VERSION}"
-            docker push "${IMAGE_NAME}:${VERSION}"
-          else
-            echo "Skipping version tag push (already exists)"
-          fi
+          # Always push version tag (registry will handle deduplication)
+          docker push "${IMAGE_NAME}:${VERSION}"
 
-          # Always update latest
+          # Also push as latest
           docker tag "${IMAGE_NAME}:${VERSION}" "${IMAGE_NAME}:latest"
           docker push "${IMAGE_NAME}:latest"
 
@@ -129,11 +109,7 @@ jobs:
           echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "- Netdata version: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "- Image: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.check_tag.outputs.tag_exists }}" == "false" ]; then
-            echo "- New version tag pushed: \`${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- Version tag already exists, only updated \`latest\`" >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "- Tags pushed: \`${{ steps.version.outputs.version }}\`, \`latest\`" >> $GITHUB_STEP_SUMMARY
           if [ "${{ steps.build.outputs.hash_mismatch }}" == "true" ]; then
             echo "- Dashboard hash was auto-updated" >> $GITHUB_STEP_SUMMARY
           fi
