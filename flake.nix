@@ -45,7 +45,9 @@
 
             # -D: Don't fork (foreground)
             # -s /host: Use /host as system prefix for monitoring host from container
-            exec ${netdata-patched}/bin/netdata -D -s /host "$@"
+            # -i: IP address to bind (default: localhost only for security)
+            BIND_IP="''${NETDATA_BIND_IP:-127.0.0.1}"
+            exec ${netdata-patched}/bin/netdata -D -s /host -i "$BIND_IP" "$@"
           '';
         in
         {

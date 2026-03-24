@@ -33,6 +33,10 @@ services:
       - /run/log/journal:/run/log/journal:ro
       - /var/log/journal:/var/log/journal:ro
 
+    environment:
+      # Bind to localhost only (default). Set to 0.0.0.0 to allow remote access
+      - NETDATA_BIND_IP=127.0.0.1
+
 volumes:
   netdata-config:
   netdata-lib:
