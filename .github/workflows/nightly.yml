@@ -1,0 +1,65 @@
+name: Nightly Build
+
+on:
+  schedule:
+    # Run daily at 00:00 UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/netdata-standalone
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Setup Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Check flake
+        run: nix flake check
+
+      - name: Build netdata package
+        run: nix build .#netdata
+
+      - name: Build Docker image
+        run: nix build .#docker
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Load and push Docker image
+        run: |
+          # Load the image built by Nix
+          docker load < result
+
+          # Get the image name and tag from Nix build
+          IMAGE_TAG=$(docker images --format "{{.Repository}}:{{.Tag}}" | head -1)
+
+          # Push with version tag
+          docker push "$IMAGE_TAG"
+
+          # Also tag and push as latest
+          docker tag "$IMAGE_TAG" "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+
+      - name: Summary
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Netdata version: $(nix eval --raw .#netdata.version)" >> $GITHUB_STEP_SUMMARY
+          echo "- Image: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY

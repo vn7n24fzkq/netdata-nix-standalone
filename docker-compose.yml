@@ -1,0 +1,30 @@
+services:
+  netdata:
+    image: ghcr.io/vn7n24fzkq/netdata-standalone:latest
+    container_name: netdata
+    hostname: ${NETDATA_HOSTNAME:-netdata}
+    restart: unless-stopped
+    ports:
+      - "19999:19999"
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      # Host monitoring (read-only)
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/os-release:/host/etc/os-release:ro
+      # Docker monitoring (optional)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Persistent data
+      - netdata-config:/etc/netdata
+      - netdata-lib:/var/lib/netdata
+      - netdata-cache:/var/cache/netdata
+    environment:
+      - NETDATA_LISTENER_PORT=19999
+
+volumes:
+  netdata-config:
+  netdata-lib:
+  netdata-cache:
