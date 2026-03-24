@@ -81,23 +81,34 @@ docker compose logs -f
 docker compose down
 ```
 
-Optionally set a custom hostname:
-```bash
-NETDATA_HOSTNAME=my-server docker compose up -d
+### Accessing the Dashboard
+
+By default, Netdata binds to `127.0.0.1` (localhost only) for security.
+
+**Local access:**
+```
+http://localhost:19999
 ```
 
-Then access the dashboard at http://localhost:19999
-
-### Manual Docker Run
+**Remote access:** If you need to access from other machines, set `NETDATA_BIND_IP=0.0.0.0`:
 
 ```bash
-docker run -d \
-  --name netdata \
-  -p 19999:19999 \
-  -v /proc:/host/proc:ro \
-  -v /sys:/host/sys:ro \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  ghcr.io/vn7n24fzkq/netdata-standalone:latest
+# Edit docker-compose.yml or set environment variable
+NETDATA_BIND_IP=0.0.0.0 docker compose up -d
+```
+
+Then access via `http://<server-ip>:19999`
+
+### Configuration Options
+
+| Environment Variable | Default | Description |
+|---------------------|---------|-------------|
+| `NETDATA_BIND_IP` | `127.0.0.1` | IP to bind (use `0.0.0.0` for remote access) |
+| `NETDATA_HOSTNAME` | `netdata` | Hostname shown in dashboard |
+
+Example with custom settings:
+```bash
+NETDATA_HOSTNAME=my-server NETDATA_BIND_IP=0.0.0.0 docker compose up -d
 ```
 
 ### Build Docker image locally
